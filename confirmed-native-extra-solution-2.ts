@@ -140,46 +140,6 @@ export const runConfirmedNativeTokenExtraWorker = async (): Promise<void> => {
     return txList;
   };
 
-/**
- * This function, getOrderCreationBlockNumber, determines the block number at which a given order was created.
- * It takes an Order object as input and returns the block number corresponding to the order creation time.
- * 
- * How it works:
- * 1. Fetch the latest block and its timestamp from the Ethereum node provider.
- * 2. Calculate the order creation timestamp in seconds (order.createdAt is in milliseconds).
- * 3. Calculate the time difference between the latest block timestamp and the order creation timestamp.
- * 4. If the time difference is negative (meaning the order was created in the future), return the latest block number.
- * 5. If the time difference is positive, iterate through previous blocks starting from the latest block number,
- *    decrementing the block number in each iteration.
- * 6. During iteration, fetch the current block and its timestamp from the Ethereum node provider.
- * 7. If the current block timestamp is less than or equal to the order creation timestamp, break the loop.
- * 8. Return the block number corresponding to the order creation time.
- */
-  const getOrderCreationBlockNumber = async (order: Order) => {
-    const block = await nodeProvider.getBlock('latest');
-    const blockTimestamp = block.timestamp;
-    const orderCreatedTimestamp = order.createdAt.getTime() / 1000;
-    const blockTimeDiff = blockTimestamp - orderCreatedTimestamp;
-
-    if (blockTimeDiff < 0) {
-      return block.number;
-    }
-
-    let startBlock = block.number;
-    while (true) {
-      const currentBlock = await nodeProvider.getBlock(startBlock);
-      const currentBlockTimestamp = currentBlock.timestamp;
-
-      if (currentBlockTimestamp <= orderCreatedTimestamp) {
-        break;
-      }
-
-      startBlock--;
-    }
-
-    return startBlock;
-  };
-
 
   // Changes made:
   // 1. Implemented pagination to fetch transactions in batches.
@@ -213,7 +173,6 @@ export const runConfirmedNativeTokenExtraWorker = async (): Promise<void> => {
       }
   
       // Improvement 1: Implemented pagination to fetch transactions in batches.
-      const startBlock = await getOrderCreationBlockNumber(order);
       let currentPage = 1;
       let hasMorePages = true;
   
@@ -222,13 +181,13 @@ export const runConfirmedNativeTokenExtraWorker = async (): Promise<void> => {
   
         try {
           // Improvement 2: Calculate startBlock to scan only relevant blocks.
-          txs = await getEtherScanTxListForAddress(order.depositAddress.address, startBlock, currentPage);
+          txs = await getEtherScanTxListForAddress(order.depositAddress.address, order.createdAtBlockNumber, currentPage);
         } catch (error: any) {
           logger.error(error, 'Error fetching txs for order %s: %s', orderId, error.message);
   
           return;
         }
-  
+
         // Improvement 3: Optimized transaction filtering.
         if (txs.length === 0) {
           hasMorePages = false;
@@ -285,3 +244,4 @@ export const runConfirmedNativeTokenExtraWorker = async (): Promise<void> => {
 
   await runScanByOrderId();
 };
+
